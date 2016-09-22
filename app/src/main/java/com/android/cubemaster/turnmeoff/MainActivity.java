@@ -3,6 +3,7 @@ package com.android.cubemaster.turnmeoff;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -21,6 +22,9 @@ public class MainActivity extends AppCompatActivity {
     private static final String LOG_TAG = MainActivity.class.getSimpleName();
     private static final boolean MOBILE_DATA_TOGGLABLE =
             Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT;
+    private static final String SHARED_PREFERENCES_NAME = "SHARED_PREFERENCES_NAME";
+    private static final String SHARED_PREFERENCES_IS_CONNECTIVITY_DISABLED_NAME =
+            "SHARED_PREFERENCES_IS_CONNECTIVITY_DISABLED_NAME";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,10 +43,15 @@ public class MainActivity extends AppCompatActivity {
             disableMobileData(context);
             message = "Wi-Fi and cellular data have been disabled";
         }
-        Toast.makeText(context, message, Toast.LENGTH_LONG).show();
-
 //        Only works up to API 16, but we can disable mobile data up to API 20, which is preferable
 //        activateAirplaneMode(context);
+
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show();
+
+        SharedPreferences.Editor editor =
+                context.getSharedPreferences(SHARED_PREFERENCES_NAME, MODE_PRIVATE).edit();
+        editor.putBoolean(SHARED_PREFERENCES_IS_CONNECTIVITY_DISABLED_NAME, true);
+        editor.commit();
     }
 
     private static boolean isWifiEnabled(Context context) {
@@ -111,8 +120,14 @@ public class MainActivity extends AppCompatActivity {
     public static class NetworkChangeReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if(isWifiEnabled(context) || (MOBILE_DATA_TOGGLABLE && isMobileDataEnabled(context))) {
-                disableConnection(context);
+            SharedPreferences sharedPreferences =
+                    context.getSharedPreferences(SHARED_PREFERENCES_NAME, MODE_PRIVATE);
+            if(sharedPreferences.getBoolean(
+                    SHARED_PREFERENCES_IS_CONNECTIVITY_DISABLED_NAME, false)) {
+                if(isWifiEnabled(context) ||
+                        (MOBILE_DATA_TOGGLABLE && isMobileDataEnabled(context))) {
+                    disableConnection(context);
+                }
             }
         }
     }
