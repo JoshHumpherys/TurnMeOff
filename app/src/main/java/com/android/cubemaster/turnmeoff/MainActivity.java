@@ -1,6 +1,8 @@
 package com.android.cubemaster.turnmeoff;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -17,6 +19,8 @@ import java.lang.reflect.Method;
 
 public class MainActivity extends AppCompatActivity {
     private static final String LOG_TAG = MainActivity.class.getSimpleName();
+    private static final boolean MOBILE_DATA_TOGGLABLE =
+            Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -25,31 +29,59 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void sendMessage(View view) {
-        String message = "Wi-Fi has been disabled";
-        disableWifi();
-        if(Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT) {
-            disableMobileData();
-            message = "Wi-Fi and cellular data have been disabled";
-        }
-        Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
-
-//        Only works up to API 16, but we can disable mobile data up to API 20, which is preferable
-//        activateAirplaneMode();
+        disableConnection(this);
     }
 
-    private void disableWifi() {
-        WifiManager wifiManager = (WifiManager) this.getSystemService(Context.WIFI_SERVICE);
+    private static void disableConnection(Context context) {
+        String message = "Wi-Fi has been disabled";
+        disableWifi(context);
+        if(MOBILE_DATA_TOGGLABLE) {
+            disableMobileData(context);
+            message = "Wi-Fi and cellular data have been disabled";
+        }
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show();
+
+//        Only works up to API 16, but we can disable mobile data up to API 20, which is preferable
+//        activateAirplaneMode(context);
+    }
+
+    private static boolean isWifiEnabled(Context context) {
+        WifiManager wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
+        return wifiManager.isWifiEnabled();
+    }
+
+    private static void disableWifi(Context context) {
+        WifiManager wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
         wifiManager.setWifiEnabled(false);
     }
 
-    private void disableMobileData() {
-        final ConnectivityManager conman = (ConnectivityManager)
-                getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+    private static boolean isMobileDataEnabled(Context context) {
+        ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
         try {
-            final Class conmanClass = Class.forName(conman.getClass().getName());
+            Class cmClass = Class.forName(cm.getClass().getName());
+            Method method = cmClass.getDeclaredMethod("getMobileDataEnabled");
+            method.setAccessible(true);
+            return (boolean) method.invoke(cm);
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        }
+        return true; // defaults to true
+    }
+
+    private static void disableMobileData(Context context) {
+        final ConnectivityManager cm =
+                (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        try {
+            final Class conmanClass = Class.forName(cm.getClass().getName());
             final Field iConnectivityManagerField = conmanClass.getDeclaredField("mService");
             iConnectivityManagerField.setAccessible(true);
-            final Object iConnectivityManager = iConnectivityManagerField.get(conman);
+            final Object iConnectivityManager = iConnectivityManagerField.get(cm);
             final Class iConnectivityManagerClass = Class.forName(
                     iConnectivityManager.getClass().getName());
             final Method setMobileDataEnabledMethod = iConnectivityManagerClass
@@ -70,8 +102,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void activateAirplaneMode() {
-        boolean successful = Settings.System.putInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 1);
+    private static void activateAirplaneMode(Context context) {
+        boolean successful = Settings.System.putInt(
+                context.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 1);
         Log.d(LOG_TAG, String.valueOf(successful));
+    }
+
+    public static class NetworkChangeReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if(isWifiEnabled(context) || (MOBILE_DATA_TOGGLABLE && isMobileDataEnabled(context))) {
+                disableConnection(context);
+            }
+        }
     }
 }
